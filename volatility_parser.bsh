@@ -1,0 +1,135 @@
+#!/bin/bash
+#Author: herptroll
+#Dato: 2014-01-09
+#Version 0.3 BETA
+#email: svendsen@herptroll.com
+#Simple bash-script that will parse typical desired information from a memory dump.
+
+#Variables and chores
+VOLDIR="/home/[user]/Volatility/" #Volvatility path
+PYTHON="/usr/bin/python" #python path
+SORT="/usr/bin/sort" #sort
+EGREP="/bin/egrep" #egreo
+PERL="/usr/bin/perl" #perl
+NETWORK="/home/[user]/Volatility_parser/network/" #Path to script for pcap
+
+
+	if [ "XX$1" = "XX" ]; then
+		echo "*** Usage:"
+		echo "***  volcmd.bsh 'my-case.dir' 'name-memory-dump' 'profile'"
+		echo "***    (NB: Fully qualified directory name)"
+                exit 0
+        else
+        	CASELIB="$1"
+        	MEMDUMP="$2"
+                PROFILE="$3"
+		echo ""
+        	echo "** Case directory: $CASELIB"
+        	echo "** Memory dump: $MEMDUMP"
+                echo "** Profile selcted: $PROFILE"
+		echo ""
+        fi
+
+res1=$(date +%s.%Nu) #start time
+FILESIZE=$(stat -c%s $CASELIB/$MEMDUMP) #calucate filesize of memory dump
+BUFFERSIZE="2147483648" #2GB represented in bytes
+mkdir $CASELIB/exedump
+mkdir $CASELIB/dlldump
+mkdir $CASELIB/output
+mkdir $CASELIB/hivedump
+
+#commence the extraction
+echo -- Creating pcap
+if (("$FILESIZE" > "$BUFFERSIZE")) ; then 
+	echo "Splitting file, larger than 2GB"
+	$PYTHON $NETWORK/naft-gfe.py -d --buffer $CASELIB/$MEMDUMP.pcap $CASELIB/$MEMDUMP 
+else
+	echo "No need to split file, smaller than 2GB"
+	$PYTHON $NETWORK/naft-gfe.py -d $CASELIB/$MEMDUMP.pcap $CASELIB/$MEMDUMP
+fi
+
+echo --- Dumping all executeables from process list
+###################################################
+$PYTHON $VOLDIR/vol.py --profile=$PROFILE -f $CASELIB/$MEMDUMP pslist | cut -c35-38 | egrep '[0-9]' > $CASELIB/tmp.txt #pull out process id's
+IFS=$'\r\n'
+XYZ=($(cat $CASELIB/tmp.txt))
+index=0
+
+for i in "${XYZ[@]}"
+do
+   $PYTHON $VOLDIR/vol.py --profile=$PROFILE -f $CASELIB/$MEMDUMP procexedump -p ${XYZ[$index]} --dump-dir=$CASELIB/exedump
+   $PYTHON $VOLDIR/vol.py --profile=$PROFILE -f $CASELIB/$MEMDUMP dlldump -p ${XYZ[$index]} --dump-dir=$CASELIB/dlldump
+   ((index++))
+done
+rm $CASELIB/tmp.txt
+#####################################################
+
+echo ---calculating hashes
+for f in $(ls $CASELIB/exedump); do md5sum $CASELIB/exedump/$f; done  > md5.exe.txt
+for f in $(ls $CASELIB/dlldump); do md5sum $CASELIB/dlldump/$f; done  > md5.dll.txt 
+
+echo "--- Processes (Pslist/Psxview) "
+$PYTHON $VOLDIR/vol.py pslist --profile=$PROFILE -f $CASELIB/$MEMDUMP > $CASELIB/output/out_pslist
+$PYTHON $VOLDIR/vol.py psxview --profile=$PROFILE -f $CASELIB/$MEMDUMP > $CASELIB/output/out_psxview
+
+echo --- Connections
+$PYTHON $VOLDIR/vol.py connections --profile=$PROFILE -f $CASELIB/$MEMDUMP > $CASELIB/output/out_connections
+$PYTHON $VOLDIR/vol.py connscan --profile=$PROFILE -f $CASELIB/$MEMDUMP > $CASELIB/output/out_connscan
+$PYTHON $VOLDIR/vol.py iehistory --profile=$PROFILE -f $CASELIB/$MEMDUMP > $CASELIB/output/out_iehistory
+$PYTHON $VOLDIR/vol.py netscan --profile=$PROFILE -f $CASELIB/$MEMDUMP > $CASELIB/output/out_netscan
+=
+echo --- Sockets
+$PYTHON $VOLDIR/vol.py sockets --profile=$PROFILE -f $CASELIB/$MEMDUMP > $CASELIB/output/out_sockets
+
+echo --- Modules
+$PYTHON $VOLDIR/vol.py modules --profile=$PROFILE -f $CASELIB/$MEMDUMP > $CASELIB/output/out_modules
+
+echo --- Mutants, SIDs, DLLs, Registry keys, symlinks
+$PYTHON $VOLDIR/vol.py mutantscan -s --profile=$PROFILE -f $CASELIB/$MEMDUMP > $CASELIB/output/out_mutantscan
+$PYTHON $VOLDIR/vol.py getsids --profile=$PROFILE -f $CASELIB/$MEMDUMP > $CASELIB/output/out_getsids
+$PYTHON $VOLDIR/vol.py dlllist --profile=$PROFILE -f $CASELIB/$MEMDUMP > $CASELIB/output/out_dlllist
+
+echo --- API Hooks
+$PYTHON $VOLDIR/vol.py apihooks --profile=$PROFILE -f $CASELIB/$MEMDUMP > $CASELIB/output/out_apihooks
+
+echo --- ldr_modules, threads
+$PYTHON $VOLDIR/vol.py thrdscan --profile=$PROFILE -f $CASELIB/$MEMDUMP  > $CASELIB/output/out_thrdscan
+
+echo --- Malware find
+$PYTHON $VOLDIR/vol.py malfind --profile=$PROFILE -f $CASELIB/$MEMDUMP > $CASELIB/output/out_malfind
+
+echo --- idt, ssdt
+$PYTHON $VOLDIR/vol.py idt --profile=$PROFILE -f $CASELIB/$MEMDUMP > $CASELIB/output/out_idt
+$PYTHON $VOLDIR/vol.py ssdt --profile=$PROFILE -f $CASELIB/$MEMDUMP > $CASELIB/output/out_ssdt
+
+echo --- Scan for hives
+$PYTHON $VOLDIR/vol.py hivelist --profile=$PROFILE -f $CASELIB/$MEMDUMP | cut -d " " -f1,3 > $CASELIB/output/out_hivelist
+
+echo ---dump hives
+##############################################################################################################################
+$PYTHON $VOLDIR/vol.py hivelist --profile=Win7SP1x86 -f $CASELIB/$MEMDUMP | cut -d " " -f1 | grep "0x" > $CASELIB/tmp1.txt #List out adresses in memory
+$PYTHON $VOLDIR/vol.py hivelist --profile=Win7SP1x86 -f $CASELIB/$MEMDUMP | cut -d " " -f3 | grep "\\\\" > $CASELIB/tmp2.txt #navn on the correlating hives
+
+IFS=$'\r\n'
+ADDRESS=($(cat $CASELIB/tmp1.txt))
+NAME=($(cat $CASELIB/tmp2.txt))
+index=0
+
+#Dump out hives from memory into files
+for i in "${ADDRESS[@]}"
+do
+   $PYTHON $VOLDIR/vol.py --profile=$PROFILE -f $CASELIB/$MEMDUMP hivedump -o ${ADDRESS[$index]} > $CASELIB/hivedump/${NAME[index]}
+      ((index++))
+done
+rm $CASELIB/tmp1.txt
+rm $CASELIB/tmp2.txt
+#################################################################################################################################
+
+#Status
+echo ""
+echo "Finished aqusition:"
+res2=$(date +%s.%N)
+echo "Start time: $res1"
+echo "Stop time:  $res2"
+echo "Elapsed:    $(echo "$res2 - $res1"|bc )"
+exit 0

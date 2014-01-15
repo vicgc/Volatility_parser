@@ -1,6 +1,3 @@
-Volatility_parser
-=================
-
 README for volatility_parser.bsh
 --------------------------------
 This script has been tested with Volatility 2.3.1 on Ubuntu.
@@ -10,7 +7,7 @@ This simple bash-scriptet will try to parse out information from a memory dump a
 for an anlyst, look below for what the scripts try to gather. The purpose is to automate this process.
 This script will do absolutely nothing to analyse the output. This will however make it faster
 to review the information gathered, because the analyst can search through text files instead of a big
-memory dump.
+memory dump. 
 
 Before you start to use this script, you have to set the full path for the following services:
 
@@ -44,13 +41,13 @@ The script will perform the following actions:
 * modules**
 * mutantscan**
 * getsids** (Shows which user ran a specific program)
-* dlllist**
+* dlllist** 
 * apihooks**
 * thrdscan**
 * malfind**
 * idt**
 * ssdt**
-* hivescan**
+* hivescan** 
 * hivedump (dumps all the hives in registry to hive files.)
 
 FAQ
@@ -62,4 +59,3 @@ If any of the above fails it is usually because that spesic command does not sup
 that particular profile. You could try another profile and see if that helps.
 The most common ones to fail is under the network section or sockets. This is due to
 support in volatility, not the script.
-
